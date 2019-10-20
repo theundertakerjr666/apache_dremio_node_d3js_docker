@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Severe Weather &amp; Search Trends</title>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1, user-scalable=yes">
+<style>
+	body {
+		text-align:center;
+		font-family: helvetica;
+		color:#383c42;
+	}
+	button {
+		background-color: #31d3db;
+		color:white;
+		padding:7px 15px;
+		outline:none;
+		font-weight:bold;
+		font-size:13px;
+	}
+	button:hover {
+		cursor:pointer;
+	}
+	.axis {
+		font: 15px sans-serif;
+	}
+	.axis path,
+	.axis line {
+	  fill: none;
+	  stroke: #D4D8DA;
+	  stroke-width: 1px;
+	  shape-rendering: crispEdges;
+	}
+	.toolTip {
+		position: absolute;
+		font-family:helvetica, sans-serif;
+		display: none;
+		height: auto;
+		color:white;
+		background-color: #a1576f;
+		padding: 14px;
+		text-align: center;
+		box-shadow: 0px 0px 10px 2px rgba(0,0,0,0.1);
+	}
+	.line {
+	  fill: none;
+	  stroke: #31d3db;
+	  stroke-width: 2px;
+	}
+	rect:hover {
+		cursor:pointer;
+	}
+</style>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script type="text/javascript">
+	var data = <%- JSON.stringify(dremioData) %>;
+</script>
+</head>
+
+<body>
+<h1>Severe Weather vs. Search Interest</h1>
+<svg width="960" height="500"></svg>
+<p>
+	Search Term: &emsp;
+	<button onclick="updateData('term_1')">Snow</button>
+	<button onclick="updateData('term_2')">School Closures</button>
+	<button onclick="updateData('term_3')">Emergency Supplies</button>
+	<button onclick="updateData('term_4')">Climate Change</button>
+</p>
+<script type="text/javascript">
+	var svg = d3.select("svg"),
+	    margin = {top: 30, right: 70, bottom: 30, left: 70},
+	    width = +svg.attr("width") - margin.left - margin.right,
+	    height = +svg.attr("height") - margin.top - margin.bottom;
+
+	var tooltip = d3.select("body").append("div").attr("class", "toolTip");
+
+	var parseTime = d3.timeParse("%b %y");
+	var monthTime = d3.timeFormat("%b");
+	var fullTime = d3.timeFormat("%b %Y");
+
+	data.forEach(function(d) {
+	    d.month = parseTime(d.month);
+	});
+
+	var x = d3.scaleBand().range([0, width]).padding(0.1),
+		y = d3.scaleLinear().rangeRound([height, 0]),
+		y2 = d3.scaleLinear().rangeRound([height, 0]);
+
+	var g = svg.append("g")
+		.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+	x.domain(data.map(function(d){ return d.month; }));
+	y.domain([0, d3.max(data, function(d) { return d.Count_EVENT; })]);
+	y2.domain([0, d3.max(data, function(d) { return d.term_1; })]);
+
+	var line = d3.line()
+	    .x(function(d) { return x(d.month); })
+	    .y(function(d) { return y2(d.term_1); });
+
+	g.append("g")
+        .attr("class", "axis")
+        .attr("transform", "translate(0," + height + ")")
+      	.call(d3.axisBottom(x).tickFormat(function(d){
+      		switch (d.getMonth()) {
+      		    case 0:
+      		    case 3:
+      		    case 6:
+      		    case 9:
+      		        return monthTime(d);
+      		}
+      	}));
+
+
+    g.append("g")
+      	.attr("class", "y axis")
+      	.call(d3.axisLeft(y).ticks(5).tickSizeInner([-width]).tickFormat(function(d){
+      		if (d > 500) { return Math.round( d / 1000 ) + 'K';}
+      	}))
+      .append("text")
+        .attr("x", -200)
+        .attr("y", -50)
+        .attr("transform", "rotate(-90)")
+        .attr("text-anchor", "start")
+        .attr("fill", "#383c42")
+        .text("Weather Events");
+
+    g.append("g")
+      	.attr("class", "y2 axis")
+      	.call(d3.axisRight(y2))
+      	.attr("transform", "translate(" + width + " ,0)")
+      .append("text")
+        .attr("x", 100)
+        .attr("y", -50)
+        .attr("transform", "rotate(90)")
+        .attr("text-anchor", "start")
+        .attr("fill", "#383c42")
+        .text("Search Interest");
+
+    g.selectAll(".bar")
+      	.data(data)
+      .enter().append("rect")
+        .attr("x", function(d) { return x(d.month); })
+        .attr("y", function(d) { return y(d.Count_EVENT); })
+        .attr("width", x.bandwidth())
+        .attr("height", function(d) { return height - y(d.Count_EVENT); })
+        .attr("fill", "#383c42")
+    	.on("mousemove", function(d){
+            tooltip
+				.style("left", d3.event.pageX - 50 + "px")
+				.style("top", d3.event.pageY - 90 + "px")
+				.style("display", "inline-block")
+				.html(
+				    (fullTime(d.month)) + "<br>" + 
+                    (d.Count_EVENT) + " Weather Events<br>" + 
+                    (Math.round(d.term_1*100)/100) + " Search Interest"
+                );
+        })
+    	.on("mouseout", function(d){ 
+    		tooltip.style("display", "none");
+    	});
+
+    g.append("path")
+		.data([data])
+		.attr("class", "line")
+		.attr("transform", "translate(" + x.bandwidth()/2 + ",0)")
+		.attr("d", line);
+
+    function updateData(term) {
+        var g = d3.select("svg").transition();
+
+    	line = d3.line()
+    	    .x(function(d) { return x(d.month); })
+    	    .y(function(d) { return y2(d[term]); });
+
+    	y2.domain([0, d3.max(data, function(d) { return d[term]; })]);
+
+        g.select(".line")
+            .duration(750)
+            .attr("d", line(data));
+
+        g.select(".y2.axis")
+        	.duration(750)
+        	.call(y2);
+    };
+		
+</script>
+</body>
+</html>
